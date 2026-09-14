@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-control-plane"
+version = "0.1.0"
+description = "Enterprise Agent Control Plane (ACP) — governed management layer for AI agent fleets. Modular monolith MVP."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.1",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "opentelemetry-sdk>=1.27",
+    "opentelemetry-api>=1.27",
+    "opentelemetry-exporter-otlp>=1.27",
+    "structlog>=24.4",
+    "pynacl>=1.5",
+    "pyjwt>=2.10",
+    "httpx>=0.27",
+    "redis>=5.0",
+    "sse-starlette>=2.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+dev = [
+    "agent-control-plane[test]",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# E501: long lines tolerated; B008: FastAPI's Depends() in parameter defaults
+# is the framework's documented idiom, not a real B008 violation.
+ignore = ["E501", "B008"]
+
+[project.scripts]
+acp-api = "acp.api.app:main"
+acp-worker = "acp.worker:main"

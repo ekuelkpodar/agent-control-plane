@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Control Plane — Status</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+           background: #0b0e14; color: #d7dce2; margin: 0; padding: 24px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 1px;
+         color: #8b94a1; margin: 28px 0 10px; }
+    .sub { color: #8b94a1; font-size: 13px; margin-bottom: 16px; }
+    .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+    input, button { font: inherit; }
+    input { background: #141a24; border: 1px solid #2a3444; color: #d7dce2;
+            padding: 6px 10px; border-radius: 6px; }
+    button { background: #1d2735; border: 1px solid #2a3444; color: #d7dce2;
+             padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #273243; }
+    button.approve { border-color: #2f7d4f; }
+    button.reject { border-color: #8a3b3b; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #1d2430; }
+    th { color: #8b94a1; font-weight: normal; text-transform: uppercase;
+         font-size: 11px; letter-spacing: 1px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px;
+            border: 1px solid #2a3444; font-size: 12px; }
+    .ok { color: #7bd88f; } .warn { color: #e3b341; } .bad { color: #ef6b6b; }
+    .muted { color: #8b94a1; }
+    pre { background: #141a24; padding: 12px; border-radius: 8px; overflow-x: auto;
+          font-size: 12px; }
+    #err { color: #ef6b6b; font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Agent Control Plane</h1>
+  <div class="sub">Read-only fleet status · governed agency, audited</div>
+
+  <div class="bar">
+    <input id="apiKey" type="password" placeholder="API key (stored in sessionStorage only)" size="40" />
+    <input id="tenant" type="text" placeholder="Tenant ID" size="18" value="default" />
+    <button id="connect">Connect</button>
+    <span id="status" class="muted"></span>
+  </div>
+  <div id="err"></div>
+
+  <h2>Agents</h2>
+  <table id="agents"><thead><tr>
+    <th>Name</th><th>Version</th><th>Status</th><th>Capabilities</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Tasks (recent)</h2>
+  <table id="tasks"><thead><tr>
+    <th>ID</th><th>Goal</th><th>Agent</th><th>Status</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Pending approvals</h2>
+  <table id="approvals"><thead><tr>
+    <th>ID</th><th>Task</th><th>Action</th><th>Risk</th><th>Decision</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>Recent audit events</h2>
+  <table id="audit"><thead><tr>
+    <th>Seq</th><th>Type</th><th>Actor</th><th>Timestamp</th>
+  </tr></thead><tbody></tbody></table>
+
+  <script src="app.js"></script>
+</body>
+</html>
