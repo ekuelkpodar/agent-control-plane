@@ -89,6 +89,174 @@ flowchart TB
     PEP -.->|fail-closed enforcement| EX
 ```
 
+## Architecture
+
+The layers above in motion — the full governed path from a task request
+to an audited result. See [ARCHITECTURE.md](ARCHITECTURE.md) for the
+normative reference.
+
+### Governed task pipeline
+
+`POST /tasks/{id}/execute` runs these stages. Every stage emits events
+and audit entries; any denial stops the task immediately.
+
+```mermaid
+sequenceDiagram
+    participant U as "User / AGRL"
+    participant API as "Task API (control plane)"
+    participant PL as Planner
+    participant R as Router
+    participant PDP as "Policy engine"
+    participant RE as "Risk engine"
+    participant H as Human
+    participant WF as "Workflow runner"
+    participant CK as "Tool choke point"
+    participant T as Tool
+    participant AU as "Audit ledger"
+
+    U->>API: POST /tasks + /tasks/{id}/execute
+    API->>PDP: task_admission
+    alt admission denied
+        PDP-->>API: deny
+        API->>AU: PolicyEvaluated (deny)
+        API-->>U: 403 denied
+    end
+    API->>PL: plan task
+    PL-->>API: plan (steps, tools, cost estimate)
+    API->>R: rank candidate agents
+    R-->>API: selected agent + score + breakdown
+    API->>PDP: plan_admission (plan, tools, cost)
+    PDP->>RE: assess risk
+    RE-->>PDP: score, level, approval flag
+    alt plan denied
+        PDP-->>API: deny
+        API->>AU: PolicyEvaluated (deny)
+        API-->>U: 403 denied
+    end
+    alt approval required
+        API->>H: ApprovalRequested (evidence payload)
+        H-->>API: approve
+        Note over H,API: reject or timeout (expired) means deny - fail closed
+        API->>AU: ApprovalGranted
+    end
+    API->>WF: run approved plan
+    loop per step
+        WF->>CK: tool_invoke + brokered credentials
+        Note over CK: PDP unreachable or policy error means deny
+        CK->>T: invoke (scoped, least privilege)
+        T-->>CK: result
+        CK->>AU: ToolInvoked
+    end
+    WF->>AU: TaskCompleted
+    WF-->>API: result
+    API-->>U: task result
+```
+
+### Agent lifecycle
+
+Exact transitions from `src/acp/state/__init__.py`:
+
+```mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> registered : register
+    registered --> validated : validate
+    validated --> deployed : deploy
+    deployed --> tested : test
+    tested --> activated : activate
+    activated --> monitoring : run
+    activated --> deprecated : retire
+    monitoring --> evaluating : evaluate
+    monitoring --> deprecated : retire
+    evaluating --> versioned : version
+    evaluating --> monitoring : promote
+    evaluating --> deprecated : retire
+    versioned --> monitoring : resume
+    versioned --> rollback : rollback
+    versioned --> deprecated : retire
+    rollback --> monitoring : resume
+    rollback --> deprecated : retire
+    deprecated --> revoked : revoke
+    revoked --> [*]
+```
+Note: revoke is reachable from *every* state above.
+
+### Governance rail choke points
+
+Policy is evaluated *before* execution — never advisory-only in
+production. The six choke points, matching `docs/api-reference.md` §5:
+
+```mermaid
+flowchart LR
+    subgraph RAIL[Governance rail - six choke points]
+        C1[1 - task admission]
+        C2[2 - plan admission]
+        C3[3 - tool call]
+        C4[4 - egress interface]
+        C5[5 - memory provenance]
+        C6[6 - learning / promotion]
+    end
+    subgraph DEC[Decision]
+        OK[allow - execute]
+        AP[require approval - human gate]
+        NO[deny - audit + stop]
+    end
+    FC[PDP unreachable or policy error means deny] -.-> RAIL
+    C1 & C2 & C3 & C4 & C5 & C6 --> OK
+    C1 & C2 & C3 & C4 & C5 & C6 --> AP
+    C1 & C2 & C3 & C4 & C5 & C6 --> NO
+```
+
+### Core data model
+
+Entities from `src/acp/db/models.py` (relationships only — see
+`models.py` for columns). Versions are columns on the agent/tool rows;
+risk assessments live on the task; models are per-agent adapter configs.
+Execution is modeled as tasks + steps (durable runner) — Temporal-backed
+workflows arrive in Phase 3.
+
+```mermaid
+erDiagram
+    TENANT ||--o{ AGENT : scopes
+    TENANT ||--o{ TOOL : scopes
+    TENANT ||--o{ POLICY_BUNDLE : scopes
+    TENANT ||--o{ BUDGET : scopes
+    AGENT ||--o{ AGENT_LIFECYCLE_EVENT : emits
+    AGENT ||--o{ TASK : executes
+    TASK ||--o{ TASK_STEP : contains
+    TASK ||--o{ APPROVAL : requests
+    TASK ||--o{ AUDIT_ENTRY : audits
+    TASK ||--o{ COST_RECORD : incurs
+    TASK_STEP }o--|| TOOL : invokes
+    BUDGET ||--o{ COST_RECORD : tracks
+```
+
+### Deployment topology
+
+Day-one local dev is Docker Compose only — no cloud account required.
+Kubernetes manifests ship in `infrastructure/kubernetes`; Helm, Terraform,
+and NATS/Kafka are Phase 5. Cloud-neutral by design: no provider-managed
+services required.
+
+```mermaid
+flowchart TB
+    subgraph DEV["Day 1 - docker compose up"]
+        PG[("Postgres 16 - system of record")]
+        RD[("Redis 7 - cache, leases, streams")]
+        OPA["OPA - optional sidecar"]
+        SVC["API + dashboard + worker"]
+        SVC --> PG
+        SVC --> RD
+        SVC -.-> OPA
+    end
+    subgraph K8S["Kubernetes - manifests included"]
+        KD["api-deployment, api-service, namespace"]
+        KPG["Postgres StatefulSet"]
+        KD --> KPG
+    end
+    DEV --> K8S
+```
+
 ## Features
 
 - **Agent & tool registry** — versioned agents with capabilities, verifiable
